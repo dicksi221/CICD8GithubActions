@@ -1,0 +1,76 @@
+name: Laravel CI/CD
+
+on:
+  push:
+    branches: [ "dev" ]
+  pull_request:
+    branches: [ "dev" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create ZIP Archive
+        run: zip -r awahustracking.zip .
+        
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awahustracking-zip
+          path: awahustracking.zip
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps: 
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: awahustracking-zip
+      
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+        
+      - name: Clear Previous Files on Server
+        env:
+          SSH_SERVER: ${{ secrets.SSH_SERVER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} 'rm -rf test.awahustracking.com/*'
+
+      - name: Upload to cPanel via SSH
+        env:
+          SSH_SERVER: ${{ secrets.SSH_SERVER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no awahustracking.zip ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }}:test.awahustracking.com
+
+      - name: Extract ZIP on Server
+        env:
+          SSH_SERVER: ${{ secrets.SSH_SERVER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} 'unzip -o test.awahustracking.com/awahustracking.zip -d test.awahustracking.com/ && rm test.awahustracking.com/awahustracking.zip'
+
+      - name: Run Laravel Setup
+        env:
+          SSH_SERVER: ${{ secrets.SSH_SERVER }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+            sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.SSH_PORT }} -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_SERVER }} './run_laravel.sh'
+
+                
+                
